@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.db import models
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Q
@@ -168,7 +170,8 @@ class HomePage(Page):
     youtube_video_id = models.CharField(max_length=512, blank=True, default='')
     youtube_video_title = models.CharField(max_length=512, blank=True, default='')
     youtube_blurb = RichTextField(blank=True, default='')
-
+    get_started_now_page = models.ForeignKey(Page,
+                blank=True, null=True, on_delete=models.SET_NULL, related_name='homepages')
 
 HomePage.content_panels = [
     MultiFieldPanel(
@@ -201,6 +204,13 @@ HomePage.content_panels = [
             FieldPanel('featured_case_study_blurb'),
         ],
         heading='Featured case study',
+        classname='collapsible collapsed',
+    ),
+    MultiFieldPanel(
+        [
+            PageChooserPanel('get_started_now_page'),
+        ],
+        heading='Get Started Now',
         classname='collapsible collapsed',
     ),
 ]
@@ -250,6 +260,7 @@ class CMSPage(Page, TopImage):
 CMSPage.content_panels = [
     FieldPanel('title'),
     FieldPanel('body'),
+    MultiFieldPanel(TopImage.panels, "hero image"),
 ]
 
 
@@ -469,14 +480,37 @@ class ExpertiseMarketplaceEntry(Orderable, models.Model):
 # CaseStudy index page
 
 
-class CaseStudyIndexPage(Page, TopImage):
+class CaseStudyIndexPage(RoutablePageMixin, Page, TopImage):
     intro = RichTextField(blank=True)
+    submit_info = RichTextField(blank=True)
+    thanks_info = RichTextField(blank=True)
 
     search_fields = Page.search_fields + (
         index.SearchField('intro'),
     )
 
     subpage_types = ['portal_pages.CaseStudyPage']
+
+    @route(r'^$')
+    def base(self, request):
+        return TemplateResponse(
+            request,
+            self.get_template(request),
+            self.get_context(request)
+        )
+
+    @route(r'^submit-case-study/$')
+    def submit(self, request):
+        from .views import submit_case_study
+        return submit_case_study(request, self)
+
+    @route(r'^submit-thank-you/$')
+    def thanks(self, request):
+        return TemplateResponse(
+            request,
+            'portal_pages/thank_you.html',
+            { "thanks_info" : self.thanks_info }
+        )
 
     @property
     def countries(self):
@@ -585,6 +619,8 @@ CaseStudyIndexPage.content_panels = [
     FieldPanel('title', classname="full title"),
     FieldPanel('intro', classname="full"),
     MultiFieldPanel(TopImage.panels, "hero image"),
+    FieldPanel('submit_info', classname="full"),
+    FieldPanel('thanks_info', classname="full"),
 ]
 
 CaseStudyIndexPage.promote_panels = Page.promote_panels
@@ -603,6 +639,7 @@ class CaseStudyPage(Page, TopImage):
         on_delete=models.SET_NULL,
         related_name='+'
     )
+    submitter_email = models.EmailField(blank=True)
 
     search_fields = Page.search_fields + (
         index.SearchField('summary'),
@@ -631,6 +668,7 @@ CaseStudyPage.content_panels = [
     InlinePanel(CaseStudyPage, 'regions', label="Regions"),
     InlinePanel(CaseStudyPage, 'countries', label="Countries"),
     InlinePanel(CaseStudyPage, 'organizations', label="Organisations"),
+    FieldPanel('submitter_email'),
 ]
 
 
@@ -673,14 +711,37 @@ class OrganizationCaseStudy(Orderable, models.Model):
 # Blog index page
 
 
-class BlogIndexPage(Page, TopImage):
+class BlogIndexPage(RoutablePageMixin, Page, TopImage):
     intro = RichTextField(blank=True)
+    submit_info = RichTextField(blank=True)
+    thanks_info = RichTextField(blank=True)
 
     search_fields = Page.search_fields + (
         index.SearchField('intro'),
     )
 
     subpage_types = ['portal_pages.BlogPage']
+
+    @route(r'^$')
+    def base(self, request):
+        return TemplateResponse(
+            request,
+            self.get_template(request),
+            self.get_context(request)
+        )
+
+    @route(r'^submit-blog/$')
+    def submit(self, request):
+        from .views import submit_blog
+        return submit_blog(request, self)
+
+    @route(r'^submit-thank-you/$')
+    def thanks(self, request):
+        return TemplateResponse(
+            request,
+            'portal_pages/thank_you.html',
+            { "thanks_info" : self.thanks_info }
+        )
 
     @property
     def tags(self):
@@ -695,6 +756,7 @@ class BlogIndexPage(Page, TopImage):
     def blogs(self):
         # Get list of live blog pages that are descendants of this page
         blogs = BlogPage.objects.live().descendant_of(self)
+        blogs = blogs.filter(date__lte=datetime.today().date())
 
         # Order by most recent date first
         blogs = blogs.order_by('-date')
@@ -737,7 +799,9 @@ BlogIndexPage.content_panels = [
     FieldPanel('title', classname="full title"),
     FieldPanel('intro', classname="full"),
     MultiFieldPanel(TopImage.panels, "blog image"),
-]
+    FieldPanel('submit_info', classname="full"),
+    FieldPanel('thanks_info', classname="full"),
+ ]
 
 BlogIndexPage.promote_panels = Page.promote_panels
 
@@ -753,6 +817,7 @@ class BlogPage(Page, TopImage):
     body = RichTextField()
     tags = ClusterTaggableManager(through=BlogPageTag, blank=True)
     date = models.DateField("Post date")
+    submitter_email = models.EmailField(blank=True)
 
     search_fields = Page.search_fields + (
         index.SearchField('body'),
@@ -768,6 +833,7 @@ BlogPage.content_panels = [
     FieldPanel('date'),
     FieldPanel('body', classname="full"),
     MultiFieldPanel(TopImage.panels, "blog image"),
+    FieldPanel('submitter_email'),
 ]
 
 BlogPage.promote_panels = Page.promote_panels + [
